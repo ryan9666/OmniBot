@@ -1,8 +1,12 @@
+const logger = require('../utils/logger');
 const settings = require('../services/settings');
 
 module.exports = {
   async execute(message) {
     if (!message.guild) return;
+    if (message.partial) {
+      try { await message.fetch(); } catch { return; }
+    }
 
     const gs = settings.getGuildSettings(message.guild.id);
     const channelId = gs.messageLog?.channelId;
@@ -24,6 +28,6 @@ module.exports = {
         footer: { text: `作者ID: ${authorId}` },
         timestamp: new Date().toISOString(),
       }],
-    }).catch(() => {});
+    }).catch(err => logger.warn('messageDelete 日誌傳送失敗:', err.message));
   },
 };

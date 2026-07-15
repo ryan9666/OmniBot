@@ -29,7 +29,8 @@ function registerEvents(client) {
 
   for (const file of files) {
     const event = require(path.join(eventsPath, file));
-    const eventName = file.replace('.js', '').replace(/-/g, '');
+    let eventName = file.replace('.js', '');
+    eventName = eventName.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
 
     if (event.once) {
       client.once(eventName, (...args) => event.execute(...args));

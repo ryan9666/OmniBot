@@ -67,54 +67,56 @@
         <div class="card">
           <h2>👋 歡迎訊息設定 — <%= g.name %></h2>
           <form method="POST" action="/api/settings/<%= g.id %>">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
             <input type="hidden" name="type" value="welcome">
             <div class="form-group">
               <label>頻道</label>
               <select name="channelId">
                 <option value="">不啟用</option>
                 <% g.channels.forEach(c => { %>
-                  <option value="<%= c.id %>" <%= g.welcomeChannel === c.id ? 'selected' : '' %>>#<%= c.name %></option>
+                  <option value="<%= c.id %>" <%= (g.welcome && g.welcome.channelId === c.id) ? 'selected' : '' %>>#<%= c.name %></option>
                 <% }); %>
               </select>
             </div>
             <div class="form-group">
               <label>歡迎訊息</label>
-              <textarea name="message" placeholder="例如：歡迎 {user} 來到 {server}！"><%= g.welcomeMessage || '' %></textarea>
+              <textarea name="message" placeholder="例如：歡迎 {user} 來到 {server}！"><%= (g.welcome && g.welcome.message) || '' %></textarea>
               <div class="hint">可用變數: <code>{user}</code> 成員名稱, <code>{server}</code> 伺服器名稱</div>
             </div>
             <div class="form-group checkbox">
-              <input type="checkbox" name="enabled" value="1" <%= g.welcomeEnabled ? 'checked' : '' %>>
+              <input type="checkbox" name="enabled" value="1" <%= (g.welcome && g.welcome.enabled) ? 'checked' : '' %>>
               <label>啟用歡迎訊息</label>
             </div>
             <button type="submit" class="btn">儲存</button>
-            <span id="msg-<%= g.id %>" class="success"></span>
+            <span id="msg-welcome-<%= g.id %>" class="success"></span>
           </form>
         </div>
 
         <div class="card">
           <h2>👋 告別訊息設定 — <%= g.name %></h2>
           <form method="POST" action="/api/settings/<%= g.id %>">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
             <input type="hidden" name="type" value="farewell">
             <div class="form-group">
               <label>頻道</label>
               <select name="channelId">
                 <option value="">不啟用</option>
                 <% g.channels.forEach(c => { %>
-                  <option value="<%= c.id %>" <%= g.farewellChannel === c.id ? 'selected' : '' %>>#<%= c.name %></option>
+                  <option value="<%= c.id %>" <%= (g.farewell && g.farewell.channelId === c.id) ? 'selected' : '' %>>#<%= c.name %></option>
                 <% }); %>
               </select>
             </div>
             <div class="form-group">
               <label>告別訊息</label>
-              <textarea name="message" placeholder="例如：{user} 離開了 {server}"><%= g.farewellMessage || '' %></textarea>
+              <textarea name="message" placeholder="例如：{user} 離開了 {server}"><%= (g.farewell && g.farewell.message) || '' %></textarea>
               <div class="hint">可用變數: <code>{user}</code> 成員名稱, <code>{server}</code> 伺服器名稱</div>
             </div>
             <div class="form-group checkbox">
-              <input type="checkbox" name="enabled" value="1" <%= g.farewellEnabled ? 'checked' : '' %>>
+              <input type="checkbox" name="enabled" value="1" <%= (g.farewell && g.farewell.enabled) ? 'checked' : '' %>>
               <label>啟用告別訊息</label>
             </div>
             <button type="submit" class="btn">儲存</button>
-            <span id="msg-<%= g.id %>" class="success"></span>
+            <span id="msg-farewell-<%= g.id %>" class="success"></span>
           </form>
         </div>
 
@@ -122,10 +124,11 @@
           <h2>🎭 自助領取身分組 — <%= g.name %></h2>
           <p style="font-size:13px;color:#888;margin-bottom:12px;">勾選以下身分組，讓成員可以用 <code>/role add</code> 和 <code>/role remove</code> 自行領取或移除</p>
           <form method="POST" action="/api/settings/<%= g.id %>/roles">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px;max-height:300px;overflow-y:auto;background:#1e1e3a;padding:10px;border-radius:8px;margin-bottom:12px;">
-              <% g.allRoles.forEach(r => { %>
+              <% g.roles.forEach(r => { %>
                 <label style="display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:4px;cursor:pointer;font-size:13px;">
-                  <input type="checkbox" name="roles" value="<%= r.id %>" <%= g.selfRoles.includes(r.id) ? 'checked' : '' %>>
+                  <input type="checkbox" name="roles" value="<%= r.id %>" <%= (g.selfRoles || []).includes(r.id) ? 'checked' : '' %>>
                   <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:<%= r.color %>;"></span>
                   <%= r.name %>
                 </label>

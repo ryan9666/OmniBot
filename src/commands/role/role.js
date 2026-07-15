@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, PermissionFlagsBits } = require('discord.js');
 const settings = require('../../services/settings');
 const logger = require('../../utils/logger');
 
@@ -67,6 +67,18 @@ module.exports = {
       const role = interaction.guild.roles.cache.get(roleId);
       if (!role) return btnInt.reply({ content: '身分組已不存在', ephemeral: true });
 
+      const gs = settings.getGuildSettings(interaction.guild.id);
+      const selfRoles = gs.selfRoles || [];
+      if (!selfRoles.includes(roleId)) return btnInt.reply({ content: '❌ 此身分組已不再允許自助領取', ephemeral: true });
+
+      const me = interaction.guild.members.me;
+      if (!me.permissions.has(PermissionFlagsBits.ManageRoles)) return btnInt.reply({ content: '❌ 機器人缺少「管理身分組」權限', ephemeral: true });
+      if (role.position >= me.roles.highest.position) return btnInt.reply({ content: '❌ 機器人的角色層級不足以管理該身分組', ephemeral: true });
+      if (role.managed) return btnInt.reply({ content: '❌ 無法領取託管身分組（如機器人角色）', ephemeral: true });
+
+      const DANGEROUS_PERMS = [PermissionFlagsBits.Administrator, PermissionFlagsBits.ManageRoles, PermissionFlagsBits.ManageGuild, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.KickMembers, PermissionFlagsBits.BanMembers];
+      if (DANGEROUS_PERMS.some(p => role.permissions.has(p))) return btnInt.reply({ content: '❌ 無法自助領取含有管理權限的身分組', ephemeral: true });
+
       const mem = btnInt.member;
       const has = mem.roles.cache.has(roleId);
 
@@ -103,7 +115,7 @@ module.exports = {
         .setDescription('請重新輸入 `/role` 開啟新選單')
         .setTimestamp();
 
-      await interaction.editReply({ embeds: [expiredEmbed], components: [] }).catch(() => {});
+      await interaction.editReply({ embeds: [expiredEmbed], components: [] }).catch(err => logger.warn('role 編輯回覆失敗:', err.message));
     });
   },
 };

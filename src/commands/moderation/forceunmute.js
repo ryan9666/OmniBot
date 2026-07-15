@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { logModAction } = require('../../services/modlog');
 const { isTopAdmin } = require('../../utils/permissions');
 const settings = require('../../services/settings');
 
@@ -27,6 +28,7 @@ module.exports = {
 
     try {
       await target.timeout(null);
+      await logModAction(interaction.guild, 'forceunmute', target.user, interaction.user, '強制解除禁言');
       const embed = new EmbedBuilder()
         .setColor(0x00ff00)
         .setTitle('🔊 禁言已解除')

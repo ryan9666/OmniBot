@@ -1,9 +1,16 @@
+const logger = require('../utils/logger');
 const settings = require('../services/settings');
 
 module.exports = {
   async execute(oldMessage, newMessage) {
     if (newMessage.author?.bot) return;
     if (!newMessage.guild) return;
+    if (newMessage.partial) {
+      try { await newMessage.fetch(); } catch { return; }
+    }
+    if (oldMessage.partial) {
+      try { await oldMessage.fetch(); } catch { /* partial data ok */ }
+    }
     if (oldMessage.content === newMessage.content) return;
 
     const gs = settings.getGuildSettings(newMessage.guild.id);
@@ -28,6 +35,6 @@ module.exports = {
         footer: { text: `作者ID: ${newMessage.author.id}` },
         timestamp: new Date().toISOString(),
       }],
-    }).catch(() => {});
+    }).catch(err => logger.warn('messageUpdate 日誌傳送失敗:', err.message));
   },
 };

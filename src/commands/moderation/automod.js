@@ -58,11 +58,28 @@ module.exports = {
             { name: '僅懲罰紀錄', value: 'punish_only' },
             { name: '不紀錄', value: 'off' },
           )))
+    .addSubcommand(sub =>
+      sub.setName('logchannel')
+        .setDescription('設定紀錄頻道')
+        .addChannelOption(opt => opt.setName('頻道').setDescription('要發送審核紀錄的頻道').setRequired(true)))
+    .addSubcommand(sub =>
+      sub.setName('phishing')
+        .setDescription('啟用/停用釣魚連結偵測'))
+    .addSubcommand(sub =>
+      sub.setName('regex')
+        .setDescription('管理正則過濾')
+        .addStringOption(opt => opt.setName('動作').setDescription('add/remove/list').setRequired(true)
+          .addChoices(
+            { name: '新增', value: 'add' },
+            { name: '刪除', value: 'remove' },
+            { name: '列表', value: 'list' },
+          ))
+        .addStringOption(opt => opt.setName('正則').setDescription('要新增或刪除的正則表達式（list 不需填）').setRequired(false)))
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
     const gs = settings.getGuildSettings(interaction.guild.id);
-    if (!gs.autoMod) gs.autoMod = { enabled: false, words: [], blockLinks: false, logChannelId: '', punishment: 'delete', timeoutMinutes: 10, logLevel: 'all', strikes: { 2: 'timeout', 3: 'kick' }, strikeResetHours: 24, userStrikes: {} };
+    if (!gs.autoMod) gs.autoMod = { enabled: false, words: [], regexWords: [], blockLinks: false, phishingProtection: false, logChannelId: '', punishment: 'delete', timeoutMinutes: 10, logLevel: 'all', strikes: { 2: 'timeout', 3: 'kick' }, strikeResetHours: 24, userStrikes: {} };
 
     if (sub === 'toggle') {
       gs.autoMod.enabled = !gs.autoMod.enabled;
@@ -134,6 +151,40 @@ module.exports = {
       settings.updateGuildSettings(interaction.guild.id, gs);
       const labels = { all: '全部紀錄', punish_only: '僅懲罰紀錄', off: '不紀錄' };
       return interaction.reply({ content: `✅ 公告級別已設為：${labels[gs.autoMod.logLevel]}`, ephemeral: true });
+    }
+
+    if (sub === 'logchannel') {
+      const channel = interaction.options.getChannel('頻道');
+      gs.autoMod.logChannelId = channel.id;
+      settings.updateGuildSettings(interaction.guild.id, gs);
+      return interaction.reply({ content: `✅ 紀錄頻道已設為 ${channel}`, ephemeral: true });
+    }
+
+    if (sub === 'phishing') {
+      gs.autoMod.phishingProtection = !gs.autoMod.phishingProtection;
+      settings.updateGuildSettings(interaction.guild.id, gs);
+      return interaction.reply({ content: `✅ 釣魚連結偵測已${gs.autoMod.phishingProtection ? '啟用' : '停用'}`, ephemeral: true });
+    }
+
+    if (sub === 'regex') {
+      const action = interaction.options.getString('動作');
+      const regex = interaction.options.getString('正則');
+      if (action === 'list') {
+        const list = gs.autoMod.regexWords.join(', ') || '（無）';
+        return interaction.reply({ content: `📋 正則列表：${list}`, ephemeral: true });
+      }
+      if (!regex) return interaction.reply({ content: '請輸入正則表達式', ephemeral: true });
+      try { new RegExp(regex); } catch { return interaction.reply({ content: '❌ 無效的正則表達式', ephemeral: true }); }
+      if (action === 'add') {
+        gs.autoMod.regexWords.push(regex);
+        settings.updateGuildSettings(interaction.guild.id, gs);
+        return interaction.reply({ content: `✅ 已新增正則：${regex}`, ephemeral: true });
+      }
+      if (action === 'remove') {
+        gs.autoMod.regexWords = gs.autoMod.regexWords.filter(r => r !== regex);
+        settings.updateGuildSettings(interaction.guild.id, gs);
+        return interaction.reply({ content: `✅ 已刪除正則：${regex}`, ephemeral: true });
+      }
     }
   },
 };

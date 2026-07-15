@@ -15,7 +15,12 @@ async function refreshDomains() {
   if (Date.now() - lastFetch < 600000) return cachedDomains;
   try {
     const res = await axios.get('https://openphish.com/feed.txt', { timeout: 10000 });
-    cachedDomains = res.data.split('\n').filter(Boolean).map(u => new URL(u).hostname).filter(Boolean);
+    cachedDomains = res.data.split('\n').filter(Boolean).map(u => {
+      try {
+        const urlStr = u.includes('://') ? u : `http://${u}`;
+        return new URL(urlStr).hostname;
+      } catch { return null; }
+    }).filter(Boolean);
     lastFetch = Date.now();
     logger.info(`釣魚資料庫已更新: ${cachedDomains.length} 個惡意網域`);
   } catch { logger.warn('釣魚資料庫更新失敗'); }

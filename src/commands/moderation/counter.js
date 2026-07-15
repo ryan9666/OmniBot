@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
+const logger = require('../../utils/logger');
 const settings = require('../../services/settings');
 
 module.exports = {
@@ -32,29 +33,11 @@ module.exports = {
 async function updateCounter(channel, type) {
   try {
     const guild = channel.guild;
-    await guild.members.fetch().catch(() => {});
+    await guild.members.fetch().catch(err => logger.warn('counter 操作失敗:', err.message));
     const total = guild.memberCount;
     const online = guild.members.cache.filter(m => m.presence?.status === 'online' || m.presence?.status === 'idle' || m.presence?.status === 'dnd').size;
     const count = type === 'members' ? total : online;
     const name = type === 'members' ? `👥 成員：${count}` : `📶 在線：${count}`;
-    await channel.setName(name).catch(() => {});
+    await channel.setName(name).catch(err => logger.warn('counter 操作失敗:', err.message));
   } catch {}
 }
-
-setInterval(async () => {
-  const fs = require('fs');
-  const path = require('path');
-  const p = path.join(__dirname, '..', '..', 'data', 'settings.json');
-  if (!fs.existsSync(p)) return;
-  try {
-    const cache = JSON.parse(fs.readFileSync(p, 'utf-8'));
-    for (const [, gs] of Object.entries(cache)) {
-      if (!gs.counters) continue;
-      for (const [, cfg] of Object.entries(gs.counters)) {
-        if (!global.client) continue;
-        const guild = global.client.guilds.cache.get(global.client.guilds.cache.first()?.id);
-        // counters are updated from ready.js
-      }
-    }
-  } catch {}
-}, 300000);

@@ -26,6 +26,7 @@ module.exports = {
       }
     }
 
+    const token = process.env.GOOGLE_DB_TOKEN || '';
     if (gs.messageLogAll?.enabled && GOOGLE_DB_URL() && message.guild.id === process.env.DISCORD_GUILD_ID) {
       logger.info(`[GSheet] 準備記錄 ${message.author.tag} 的訊息到 ${GOOGLE_DB_URL()}`);
       const now = new Date();
@@ -40,12 +41,9 @@ module.exports = {
         content: message.content?.slice(0, 1000) || '',
         url: message.url,
       };
-      axios.post(GOOGLE_DB_URL(), { action: 'log', logEntry: entry }, { timeout: 5000 })
+      axios.post(GOOGLE_DB_URL(), { action: 'log', logEntry: entry, token }, { timeout: 5000 })
         .then(() => logger.info(`[GSheet] ${message.author.tag} 的訊息已記錄`))
         .catch(err => logger.error(`[GSheet] 記錄失敗:`, err.message));
-    } else {
-      if (!gs.messageLogAll?.enabled) logger.info('[GSheet] 未啟用');
-      if (!GOOGLE_DB_URL()) logger.info('[GSheet] 未設定 GOOGLE_DB_URL');
     }
 
     if (gs.inviteGuard?.enabled) {
@@ -56,8 +54,8 @@ module.exports = {
         if (!gs.inviteGuard.whitelist?.includes(code)) {
           try {
             await message.delete();
-            const warn = await message.channel.send(`${message.author} 不允許張貼邀請連結`).catch(() => {});
-            setTimeout(() => warn?.delete().catch(() => {}), 3000);
+            const warn = await message.channel.send(`${message.author} 不允許張貼邀請連結`).catch(err => logger.warn('messageCreate 操作失敗:', err.message));
+            setTimeout(() => warn?.delete().catch(err => logger.warn('messageCreate 操作失敗:', err.message)), 3000);
             if (gs.inviteGuard.logChannelId) {
               const logCh = message.guild.channels.cache.get(gs.inviteGuard.logChannelId);
               if (logCh) logCh.send(`🚫 ${message.author} 張貼了非白名單邀請：\`${code}\``);
@@ -69,17 +67,20 @@ module.exports = {
     }
 
     if (gs.antiRaid?.enabled) {
+      const { PermissionFlagsBits } = require('discord.js');
+      if (!message.member || !message.guild.members.me.permissions.has(PermissionFlagsBits.ModerateMembers)) return;
       const raidTracker = require('../services/raid-tracker');
-      const dupCount = raidTracker.checkDuplicate(message.guild.id, message.author.id, message.content);
+      const windowMs = (gs.antiRaid.spamWindow || 5) * 1000;
+      const dupCount = raidTracker.checkDuplicate(message.guild.id, message.author.id, message.content, windowMs);
       if (dupCount >= (gs.antiRaid.spamThreshold || 5)) {
         try {
           const channel = message.channel;
           const fetched = await channel.messages.fetch({ limit: 50 }).catch(() => null);
           if (fetched) {
             const userMsgs = fetched.filter(m => m.author.id === message.author.id && m.deletable);
-            await channel.bulkDelete(userMsgs).catch(() => {});
+            await channel.bulkDelete(userMsgs).catch(err => logger.warn('messageCreate 操作失敗:', err.message));
           }
-          await message.member.timeout((gs.antiRaid.spamTimeout || 1) * 60 * 1000, '防轟炸：短時間大量訊息').catch(() => {});
+          await message.member.timeout((gs.antiRaid.spamTimeout || 1) * 60 * 1000, '防轟炸：短時間大量訊息').catch(err => logger.warn('messageCreate 操作失敗:', err.message));
           const logCh = gs.antiRaid.logChannelId ? message.guild.channels.cache.get(gs.antiRaid.logChannelId) : null;
           if (logCh) logCh.send(`🚨 **防轟炸** ${message.author} 短時間發送大量訊息，已禁言 ${gs.antiRaid.spamTimeout || 1} 分鐘`);
         } catch {}
@@ -88,7 +89,12 @@ module.exports = {
 
     if (!gs.autoMod || !gs.autoMod.enabled) return;
 
-    const { words, regexWords, blockLinks, phishingProtection, logChannelId, punishment, timeoutMinutes, logLevel, strikes, strikeResetHours } = gs.autoMod;
+    const isMod = message.member?.permissions?.has('Administrator') ||
+      (gs.adminRoles?.topIds || []).some(id => message.member?.roles?.cache?.has(id)) ||
+      (gs.adminRoles?.modIds || []).some(id => message.member?.roles?.cache?.has(id));
+    if (isMod) return;
+
+    const { words=[], regexWords=[], blockLinks, phishingProtection, logChannelId, punishment, timeoutMinutes, logLevel, strikes, strikeResetHours } = gs.autoMod;
     const normalized = message.content.toLowerCase().replace(/[\s\n\r\t]+/g, '').replace(/[^a-z0-9\u4e00-\u9fff]/g, '');
     let flagged = false;
     let reason = '';
@@ -109,7 +115,10 @@ module.exports = {
     }
 
     if (!flagged && regexWords?.length > 0) {
+      const SAFE_REGEX_LIMIT = 100;
       for (const pattern of regexWords) {
+        if (pattern.length > SAFE_REGEX_LIMIT) continue;
+        if (/(.).*\1{3,}/.test(pattern) || /\(.*\+.*\)/.test(pattern)) continue;
         try {
           if (new RegExp(pattern, 'i').test(normalized)) {
             flagged = true;
@@ -134,7 +143,10 @@ module.exports = {
     let censored = message.content;
     if (foundWord) censored = censored.replace(new RegExp(foundWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '****');
     if (regexWords?.length > 0) {
+      const SAFE_REGEX_LIMIT = 100;
       for (const pattern of regexWords) {
+        if (pattern.length > SAFE_REGEX_LIMIT) continue;
+        if (/(.).*\1{3,}/.test(pattern) || /\(.*\+.*\)/.test(pattern)) continue;
         try { censored = censored.replace(new RegExp(pattern, 'gi'), '****'); } catch {}
       }
     }
@@ -178,10 +190,17 @@ module.exports = {
 
       let punished = false;
 
-      if (effectivePunishment === 'timeout' || effectivePunishment === 'warn') {
+      if (effectivePunishment === 'timeout') {
+        if (!message.member) return;
         await message.member.timeout(effectiveDuration * 60 * 1000, `自動審核(${strikeCount}次)：${reason}`).catch(err => logger.error(`自動審核 timeout 失敗:`, err.message));
         punished = true;
+      } else if (effectivePunishment === 'warn') {
+        if (!message.member) return;
+        const warnMsg = await message.channel.send(`⚠️ ${message.author}，請注意言詞！您已被系統警告 (${strikeCount}犯)。`).catch(err => logger.warn('messageCreate 操作失敗:', err.message));
+        if (warnMsg) setTimeout(() => warnMsg.delete().catch(err => logger.warn('messageCreate 操作失敗:', err.message)), 5000);
+        punished = true;
       } else if (effectivePunishment === 'kick') {
+        if (!message.member) return;
         await message.member.kick(`自動審核(${strikeCount}次)：${reason}`).catch(err => logger.error(`自動審核 kick 失敗:`, err.message));
         punished = true;
       }

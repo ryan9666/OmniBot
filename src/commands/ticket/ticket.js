@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits } = require('discord.js');
+const logger = require('../../utils/logger');
 const settings = require('../../services/settings');
 const { isTopAdmin } = require('../../utils/permissions');
 
@@ -50,7 +51,7 @@ module.exports = {
         return interaction.reply({ content: '❌ 只有管理員可以關閉工單', ephemeral: true });
       }
       await interaction.reply({ content: '🔒 此工單將在 5 秒後關閉...' });
-      setTimeout(() => interaction.channel.delete().catch(() => {}), 5000);
+      setTimeout(() => interaction.channel.delete().catch(err => logger.warn('ticket 關閉刪除頻道失敗:', err.message)), 5000);
       return;
     }
 

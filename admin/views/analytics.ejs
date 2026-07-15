@@ -80,12 +80,12 @@
         <% guildData.forEach(g => { %>
         <tr>
           <td><%= g.name %></td>
-          <td><%= g.total %></td>
-          <td><%= g.humans %></td>
-          <td><%= g.bots %></td>
-          <td><%= g.channels %></td>
-          <td><t:%= Math.floor(g.created) %>:R></td>
-          <td><%= g.owner %></td>
+          <td><%= g.memberCount %></td>
+          <td><%= g.memberCount - (g.botCount || 0) %></td>
+          <td><%= g.botCount || 0 %></td>
+          <td><%= g.channels ? g.channels.length : 0 %></td>
+          <td><%= g.createdAt ? `<t:${Math.floor(new Date(g.createdAt).getTime() / 1000)}:R>` : '-' %></td>
+          <td><%= g.ownerTag || '-' %></td>
         </tr>
         <% }); %>
       </table>
@@ -98,7 +98,7 @@
       type: 'bar',
       data: {
         labels: <%= JSON.stringify(guildData.map(g => g.name)) %>,
-        datasets: [{ label: '成員數', data: <%= JSON.stringify(guildData.map(g => g.total)) %>, backgroundColor: colors, borderRadius: 4 }]
+        datasets: [{ label: '成員數', data: <%= JSON.stringify(guildData.map(g => g.memberCount)) %>, backgroundColor: colors, borderRadius: 4 }]
       },
       options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.04)' } }, x: { grid: { display: false } } } }
     });
@@ -107,7 +107,7 @@
       type: 'doughnut',
       data: {
         labels: <%= JSON.stringify(guildData.map(g => g.name)) %>,
-        datasets: [{ data: <%= JSON.stringify(guildData.map(g => g.humans)) %>, backgroundColor: colors, borderWidth: 0 }]
+        datasets: [{ data: <%= JSON.stringify(guildData.map(g => g.memberCount - (g.botCount || 0))) %>, backgroundColor: colors, borderWidth: 0 }]
       },
       options: { responsive: true, plugins: { legend: { position: 'right', labels: { color: '#888', font: { size: 11 } } } } }
     });

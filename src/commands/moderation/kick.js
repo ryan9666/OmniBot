@@ -1,4 +1,7 @@
+const APPEAL_URL = process.env.APPEAL_URL || 'https://omnibot-yzti.onrender.com/appeal';
 const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
+const { logModAction } = require('../../services/modlog');
+const { canTarget } = require('../../utils/permissions');
 
 module.exports = {
   category: '管理',
@@ -18,15 +21,27 @@ module.exports = {
       return interaction.reply({ content: '找不到該成員', ephemeral: true });
     }
 
+    if (target.id === interaction.client.user.id) {
+      return interaction.reply({ content: '❌ 無法踢出機器人自己', ephemeral: true });
+    }
+    if (target.id === interaction.guild.ownerId) {
+      return interaction.reply({ content: '❌ 無法踢出伺服器擁有者', ephemeral: true });
+    }
+    if (!canTarget(interaction.member, target)) {
+      return interaction.reply({ content: '❌ 你的身分組層級不足以踢出該成員', ephemeral: true });
+    }
     if (!target.kickable) {
       return interaction.reply({ content: '無法踢出該成員（權限不足）', ephemeral: true });
     }
 
+    await interaction.deferReply();
+
     try {
-      await target.send(`你已被伺服器 **${interaction.guild.name}** 踢出\n原因: ${reason}\n\n📋 申訴：https://omnibot-yzti.onrender.com/appeal`);
+      await target.send(`你已被伺服器 **${interaction.guild.name}** 踢出\n原因: ${reason}\n\n📋 申訴：${APPEAL_URL}`);
     } catch {}
 
     await target.kick(reason);
+    await logModAction(interaction.guild, 'kick', target.user, interaction.user, reason);
 
     const embed = new EmbedBuilder()
       .setColor(0xffa500)
@@ -38,6 +53,6 @@ module.exports = {
       )
       .setTimestamp();
 
-    await interaction.reply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [embed] });
   },
 };

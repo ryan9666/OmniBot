@@ -4,7 +4,12 @@
 const DB_SHEET = 'OmniBotDB';
 const LOG_SHEET = 'MessageLog';
 
+const API_TOKEN = PropertiesService.getScriptProperties().getProperty('API_TOKEN');
+
 function doGet(e) {
+  const token = e?.parameter?.token;
+  if (API_TOKEN && token !== API_TOKEN) return json({ error: 'unauthorized' });
+
   const action = e?.parameter?.action;
   const guildId = e?.parameter?.guild;
 
@@ -50,6 +55,9 @@ function doPost(e) {
   try {
     const body = typeof e?.postData?.contents === 'string'
       ? JSON.parse(e.postData.contents) : e?.parameter || {};
+
+    const token = e?.parameter?.token || body?.token;
+    if (API_TOKEN && token !== API_TOKEN) return json({ error: 'unauthorized' });
 
     const { guildId, settings, action, logEntry } = body;
 

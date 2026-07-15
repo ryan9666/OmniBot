@@ -33,6 +33,23 @@ if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true });
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const isProduction = process.env.NODE_ENV === 'production';
+let sessionSecret = process.env.SESSION_SECRET;
+const publicBaseUrl = process.env.PUBLIC_BASE_URL || (config.discord.redirectUri ? new URL(config.discord.redirectUri).origin : '');
+
+if (!sessionSecret) {
+  const secretFile = path.join(__dirname, 'data', 'session_secret.txt');
+  if (fs.existsSync(secretFile)) {
+    sessionSecret = fs.readFileSync(secretFile, 'utf8');
+  } else {
+    sessionSecret = crypto.randomBytes(32).toString('hex');
+    fs.writeFileSync(secretFile, sessionSecret, 'utf8');
+  }
+}
+
+if (isProduction && (!sessionSecret || !publicBaseUrl)) {
+  throw new Error('正式環境必須設定 SESSION_SECRET 與 PUBLIC_BASE_URL');
+}
 
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'admin/views'));
@@ -42,20 +59,82 @@ app.use(express.json());
 
 app.use(session({
   store: new FileStore({ path: sessionDir, ttl: 86400 * 30, retries: 0, logFn: () => {} }),
-  secret: 'omnibot-replit-session',
+  secret: sessionSecret || crypto.randomBytes(32).toString('hex'),
   resave: false,
   saveUninitialized: false,
-  cookie: { maxAge: 30 * 24 * 60 * 60 * 1000, sameSite: 'lax', secure: false },
+  cookie: {
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+    sameSite: 'lax',
+    secure: isProduction,
+    httpOnly: true,
+  },
 }));
 
 function requireAuth(req, res, next) {
-  if (req.session.authenticated) return next();
+  if (req.session.authenticated && req.session.discordUser?.id) return next();
   res.redirect('/login');
 }
 
-function requireTopAdmin(req, res, next) {
-  if (req.session.adminLevel === 'top') return next();
-  res.status(403).send('只有👑可愛的管管們才能執行此操作');
+function requireGuildAccess(level = 'mod') {
+  return async (req, res, next) => {
+    const guildId = req.params.guildId || req.params.id;
+    if (!guildId) return res.status(400).send('缺少伺服器 ID');
+    const access = await getGuildAccess(req, guildId);
+    if (!access || !access[level]) {
+      return res.status(403).send('你沒有管理此伺服器的權限');
+    }
+    req.guildAccess = access;
+    next();
+  };
+}
+
+const requireTopAdmin = requireGuildAccess('top');
+const requireModerator = requireGuildAccess('mod');
+
+function requireSameOrigin(req, res, next) {
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
+
+  const source = req.get('origin') || (() => {
+    const referer = req.get('referer');
+    if (!referer) return '';
+    try { return new URL(referer).origin; } catch { return ''; }
+  })();
+  const expected = publicBaseUrl || `${req.protocol}://${req.get('host')}`;
+
+  if (source !== expected) return res.status(403).send('不接受跨網站請求');
+  next();
+}
+
+app.use(requireSameOrigin);
+
+async function getGuildAccess(req, guildId) {
+  const userId = req.session.discordUser?.id;
+  const guild = client.guilds.cache.get(guildId);
+  if (!userId || !guild) return null;
+
+  const member = guild.members.cache.get(userId) || await guild.members.fetch(userId).catch(() => null);
+  if (!member) return null;
+
+  const gs = settings.getGuildSettings(guild.id);
+  if ((gs.blockedUsers || []).includes(userId) && member.id !== guild.ownerId) return null;
+
+  const { isTopAdmin, isModerator } = require('./src/utils/permissions');
+  const top = member.id === guild.ownerId || isTopAdmin(member, gs.adminRoles?.topIds || []);
+  const mod = top || isModerator(member, gs.adminRoles?.modIds || []);
+  return { guild, member, settings: gs, top, mod };
+}
+
+async function getAccessibleGuilds(req, level = 'mod') {
+  const entries = await Promise.all(
+    [...client.guilds.cache.keys()].map(async id => ({ id, access: await getGuildAccess(req, id) }))
+  );
+  return entries.filter(entry => entry.access?.[level]).map(entry => entry.access);
+}
+
+function requireSystemAdmin(req, res, next) {
+  const allowedIds = new Set((process.env.SYSTEM_ADMIN_USER_IDS || '').split(',').map(id => id.trim()).filter(Boolean));
+  if (allowedIds.has(req.session.discordUser?.id)) return next();
+  res.status(403).send('此功能僅限系統管理員使用');
 }
 
 app.get('/', (req, res) => {
@@ -156,10 +235,19 @@ app.get('/auth/discord/callback', async (req, res) => {
       return res.render('login', { error: '❌ 你沒有管理員權限（需要可愛的管管們或可惡的管管們身分組）' });
     }
 
-    req.session.authenticated = true;
-    req.session.adminLevel = adminLevel;
-    req.session.discordUser = { id: discordUser.id, username: discordUser.username, avatar: discordUser.avatar, global_name: discordUser.global_name };
-    req.session.save(() => res.redirect('/dashboard'));
+    req.session.regenerate(err => {
+      if (err) {
+        logger.error('無法建立安全的登入工作階段:', err);
+        return res.render('login', { error: '登入工作階段建立失敗，請稍後再試' });
+      }
+      req.session.authenticated = true;
+      req.session.adminLevel = adminLevel;
+      req.session.discordUser = { id: discordUser.id, username: discordUser.username, avatar: discordUser.avatar, global_name: discordUser.global_name };
+      req.session.save(saveErr => {
+        if (saveErr) return res.render('login', { error: '登入工作階段儲存失敗，請稍後再試' });
+        res.redirect('/dashboard');
+      });
+    });
   } catch (err) {
     logger.error('Discord OAuth 失敗:', err.response?.data || err.message);
     res.render('login', { error: 'Discord 登入失敗，請稍後再試' });
@@ -175,7 +263,7 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', uptime: process.uptime(), bot: client.ws.status === 0 ? 'online' : 'offline' });
 });
 
-app.get('/export', requireAuth, async (req, res) => {
+app.get('/export', requireAuth, requireSystemAdmin, async (req, res) => {
   try {
     const XLSX = require('xlsx');
     const wb = XLSX.utils.book_new();
@@ -322,10 +410,66 @@ app.post('/api/appeal/submit', async (req, res) => {
   }
 });
 
-app.get('/dashboard', requireAuth, (req, res) => {
-  const guilds = client.guilds.cache.map(g => ({
-    id: g.id, name: g.name, memberCount: g.memberCount,
-    icon: g.icon ? `<img src="https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=48" style="width:48px;height:48px;border-radius:10px;">` : '🌐',
+app.post('/api/github-webhook', async (req, res) => {
+  try {
+    const event = req.headers['x-github-event'];
+    const body = req.body;
+
+    if (event === 'ping') return res.json({ ok: true });
+    if (!['pull_request', 'pull_request_review', 'issues'].includes(event)) return res.status(200).json({ ignored: true });
+
+    const action = body.action;
+    const pr = body.pull_request || body.issue;
+    if (!pr) return res.status(200).json({ ignored: true });
+
+    let color = 0x888888;
+    let title = '';
+    let fields = [];
+
+    if (event === 'pull_request') {
+      if (action === 'opened') { color = 0x2ecc71; title = '🟢 PR 已建立'; fields.push({ name: '標題', value: pr.title }); }
+      else if (action === 'closed' && pr.merged) { color = 0x9b59b6; title = '✅ PR 已合併'; fields.push({ name: '標題', value: pr.title }); }
+      else if (action === 'closed') { color = 0xe74c3c; title = '❌ PR 已關閉'; fields.push({ name: '標題', value: pr.title }); }
+      else return res.status(200).json({ ignored: true });
+      fields.push({ name: '作者', value: pr.user?.login || '?', inline: true });
+      fields.push({ name: '分支', value: `${pr.head?.ref || '?'} → ${pr.base?.ref || '?'}`, inline: true });
+      if (pr.html_url) fields.push({ name: '連結', value: pr.html_url });
+    } else if (event === 'pull_request_review' && action === 'submitted') {
+      const review = body.review;
+      if (review.state === 'approved') { color = 0x2ecc71; title = '✅ PR 審核通過'; }
+      else if (review.state === 'changes_requested') { color = 0xe74c3c; title = '🔴 PR 需修改'; }
+      else return res.status(200).json({ ignored: true });
+      fields.push({ name: 'PR', value: body.pull_request?.title || '?' });
+      fields.push({ name: '審核者', value: review.user?.login || '?', inline: true });
+    } else if (event === 'issues' && action === 'opened') {
+      color = 0xf39c12; title = '🟡 新 Issue';
+      fields.push({ name: '標題', value: pr.title });
+      fields.push({ name: '建立者', value: pr.user?.login || '?', inline: true });
+      if (pr.html_url) fields.push({ name: '連結', value: pr.html_url });
+    } else return res.status(200).json({ ignored: true });
+
+    for (const guild of client.guilds.cache.values()) {
+      const gs = settings.getGuildSettings(guild.id);
+      const chId = gs.githubWebhook?.channelId;
+      if (!chId) continue;
+      const ch = guild.channels.cache.get(chId);
+      if (!ch) continue;
+      const { EmbedBuilder } = require('discord.js');
+      const embed = new EmbedBuilder().setColor(color).setTitle(title).addFields(fields).setTimestamp();
+      await ch.send({ embeds: [embed] }).catch(() => {});
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error('GitHub Webhook 錯誤:', err.message);
+    res.status(200).json({ ok: true });
+  }
+});
+
+app.get('/dashboard', requireAuth, async (req, res) => {
+  const accessible = await getAccessibleGuilds(req, 'mod');
+  const guilds = accessible.map(acc => ({
+    id: acc.guild.id, name: acc.guild.name, memberCount: acc.guild.memberCount,
+    icon: acc.guild.icon ? `<img src="https://cdn.discordapp.com/icons/${acc.guild.id}/${acc.guild.icon}.png?size=48" style="width:48px;height:48px;border-radius:10px;">` : '🌐',
   }));
   const totalUsers = guilds.reduce((s, g) => s + g.memberCount, 0);
   res.render('dashboard', {
@@ -335,11 +479,11 @@ app.get('/dashboard', requireAuth, (req, res) => {
   });
 });
 
-app.get('/logs', requireAuth, (req, res) => {
+app.get('/logs', requireAuth, requireSystemAdmin, (req, res) => {
   res.render('logs', { logs: logCapture.getLogs(), user: req.session.discordUser || null, adminLevel: req.session.adminLevel || null });
 });
 
-app.get('/analytics', requireAuth, async (req, res) => {
+app.get('/analytics', requireAuth, requireSystemAdmin, async (req, res) => {
   const guildData = [];
   for (const g of client.guilds.cache.values()) {
     await g.members.fetch().catch(() => {});
@@ -357,7 +501,7 @@ app.get('/analytics', requireAuth, async (req, res) => {
   res.render('analytics', { guildData, totalHumans, totalGuilds: guildData.length, user: req.session.discordUser || null, adminLevel: req.session.adminLevel || null });
 });
 
-app.get('/api/logs/stream', requireAuth, (req, res) => {
+app.get('/api/logs/stream', requireAuth, requireSystemAdmin, (req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
   let index = parseInt(req.query.index, 10) || 0;
   const interval = setInterval(() => {
@@ -373,7 +517,7 @@ app.get('/cmd', requireAuth, (req, res) => {
   res.render('cmd', { commands, user: req.session.discordUser || null, adminLevel: req.session.adminLevel || null });
 });
 
-app.get('/server/:id', requireAuth, async (req, res) => {
+app.get('/server/:id', requireAuth, requireGuildAccess('mod'), async (req, res) => {
   try {
     const guild = client.guilds.cache.get(req.params.id);
     if (!guild) return res.status(404).send('找不到伺服器');
@@ -414,6 +558,7 @@ app.get('/server/:id', requireAuth, async (req, res) => {
         messageLogAll: gs.messageLogAll || { enabled: false },
         inviteGuard: gs.inviteGuard || { enabled: false, whitelist: [], logChannelId: '' },
         appeal: gs.appeal || { channelId: '' },
+        githubWebhook: gs.githubWebhook || { channelId: '' },
         antiRaid: gs.antiRaid || { enabled: false, joinThreshold: 5, joinWindow: 10, spamThreshold: 5, spamWindow: 5, spamTimeout: 1, action: 'kick', logChannelId: '' },
         inviteLog: gs.inviteLog || { channelId: '' },
         welcome: gs.welcome || { enabled: false, channelId: '', message: '' },
@@ -551,6 +696,10 @@ app.post('/api/announce/send', requireAuth, async (req, res) => {
   try {
     const channel = client.channels.cache.get(channelId);
     if (!channel) return res.json({ success: false, error: '找不到頻道' });
+    const guildId = channel.guild.id;
+    const access = await getGuildAccess(req, guildId);
+    if (!access || !access.top) return res.status(403).json({ success: false, error: '你沒有在此伺服器發送公告的權限' });
+    if (!channel) return res.json({ success: false, error: '找不到頻道' });
     const { EmbedBuilder } = require('discord.js');
     const embed = new EmbedBuilder()
       .setColor(parseInt(color?.replace('#', ''), 16) || 0x7c6ff0)
@@ -630,6 +779,13 @@ app.post('/api/settings/:guildId/invitelog', requireAuth, requireTopAdmin, (req,
   gs.inviteLog = { channelId: req.body.channelId || '' };
   settings.updateGuildSettings(req.params.guildId, gs);
   res.redirect(`/server/${req.params.guildId}#invitelog`);
+});
+
+app.post('/api/settings/:guildId/githubwebhook', requireAuth, requireTopAdmin, (req, res) => {
+  const gs = settings.getGuildSettings(req.params.guildId);
+  gs.githubWebhook = { channelId: req.body.channelId || '' };
+  settings.updateGuildSettings(req.params.guildId, gs);
+  res.redirect(`/server/${req.params.guildId}#githubwebhook`);
 });
 
 app.post('/api/server/:id/send-ticket-panel', requireAuth, requireTopAdmin, async (req, res) => {

@@ -87,6 +87,7 @@
     </div>
   </div>
   <script>
+    const CSRF_TOKEN = '<%= csrfToken %>';
     document.getElementById('announceForm').onsubmit = async (e) => {
       e.preventDefault();
       const channels = [...document.querySelectorAll('input[name="channels"]:checked')].map(c => c.value);
@@ -101,7 +102,7 @@
         try {
           const res = await fetch('/api/announce/send', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
             body: JSON.stringify({ channelId: channels[i], message }),
           });
           const data = await res.json();

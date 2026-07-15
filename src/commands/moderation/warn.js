@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { isModerator, canTarget } = require('../../utils/permissions');
+const { logModAction } = require('../../services/modlog');
 const settings = require('../../services/settings');
 
 module.exports = {
@@ -33,6 +34,17 @@ module.exports = {
     } catch {
       // 私訊失敗不影響
     }
+
+    if (!gs.warnings) gs.warnings = {};
+    if (!gs.warnings[target.id]) gs.warnings[target.id] = [];
+    gs.warnings[target.id].push({
+      id: Date.now().toString(36),
+      reason,
+      moderatorId: interaction.user.id,
+      time: Date.now(),
+    });
+    settings.updateGuildSettings(interaction.guild.id, gs);
+    await logModAction(interaction.guild, 'warn', target.user, interaction.user, reason);
 
     const embed = new EmbedBuilder()
       .setColor(0xffcc00)

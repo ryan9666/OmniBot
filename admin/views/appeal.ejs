@@ -37,7 +37,7 @@
     <% } else if (!user) { %>
       <p style="color:#ef4444;"><%= typeof query?.error === 'string' ? '登入失敗，請稍後再試' : '' %></p>
       <p>請先透過 Discord 登入以驗證身份，才能提交申訴。</p>
-      <a href="/appeal/login" class="btn btn-discord"> Discord 登入</a>
+      <a href="/login" class="btn btn-discord">🔐 管理員登入</a>
     <% } else { %>
       <div class="user-info">
         <img src="https://cdn.discordapp.com/avatars/<%= user.id %>/<%= user.avatar %>.png?size=64" alt="">
@@ -57,6 +57,7 @@
   </div>
   <% if (locals.user) { %>
   <script>
+    const CSRF_TOKEN = '<%= csrfToken %>';
     document.getElementById('appealForm').addEventListener('submit', async e => {
       e.preventDefault();
       const status = document.getElementById('status');
@@ -64,8 +65,12 @@
       try {
         const res = await fetch('/api/appeal/submit', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ reason: document.getElementById('reason').value }),
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+          body: JSON.stringify({
+            reason: document.getElementById('reason').value,
+            userId: '<%= user.id %>',
+            userName: '<%= user.global_name || user.username %>',
+          }),
         });
         const data = await res.json();
         if (data.success) {

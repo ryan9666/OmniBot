@@ -8,6 +8,7 @@ const SETTINGS_PATH = path.join(SETTINGS_DIR, 'settings.json');
 
 let cache = null;
 let useGoogle = false;
+let writeQueue = Promise.resolve();
 
 function ensureDir() {
   if (!fs.existsSync(SETTINGS_DIR)) {
@@ -30,11 +31,18 @@ function getDefaults() {
     messageLogAll: { enabled: false },
     inviteGuard: { enabled: false, whitelist: [], logChannelId: '' },
     appeal: { channelId: '' },
+    githubWebhook: { channelId: '' },
     antiRaid: { enabled: false, joinThreshold: 5, joinWindow: 10, spamThreshold: 5, spamWindow: 5, spamTimeout: 1, action: 'kick', logChannelId: '' },
     inviteLog: { channelId: '' },
     adminRoles: { topIds: [], modIds: [] },
     blockedUsers: [],
     customCommands: {},
+    autoRoleId: '',
+    warnings: {},
+    verification: { channelId: '', roleId: '', messageId: '', enabled: false },
+    modLog: { channelId: '' },
+    tempBans: {},
+    autoNick: { enabled: false, template: '', roles: {} },
   };
 }
 
@@ -118,8 +126,10 @@ function updateGuildSettings(guildId, settings) {
   const data = load();
   data[guildId] = { ...data[guildId], ...settings };
   save();
-  if (useGoogle && guildId === process.env.DISCORD_GUILD_ID) {
-    googleDb.set(guildId, data[guildId]).catch(() => {});
+  if (useGoogle) {
+    writeQueue = writeQueue.then(() =>
+      googleDb.set(guildId, data[guildId]).catch(err => logger.warn('settings Google Sheets 同步失敗:', err.message))
+    );
   }
   return data[guildId];
 }
@@ -152,14 +162,23 @@ function startSync() {
     try {
       const fresh = await googleDb.getAll();
       if (fresh && Object.keys(fresh).length > 0) {
-        const oldCache = cache || {};
-        cache = {};
-        for (const [gid, data] of Object.entries(fresh)) {
-          cache[gid] = { ...getDefaults(), ...data };
+        const data = load();
+        const oldKeys = Object.keys(data);
+        let changed = 0;
+        for (const [gid, gs] of Object.entries(fresh)) {
+          if (!data[gid]) {
+            data[gid] = { ...getDefaults(), ...gs };
+            changed++;
+          } else {
+            const merged = { ...data[gid], ...gs };
+            if (JSON.stringify(merged) !== JSON.stringify(data[gid])) {
+              data[gid] = merged;
+              changed++;
+            }
+          }
         }
         save();
-        const changed = Object.keys(cache).filter(k => JSON.stringify(cache[k]) !== JSON.stringify(oldCache[k]));
-        if (changed.length > 0) logger.info(`Google Sheets 同步完成，${changed.length} 個伺服器有更新`);
+        if (changed > 0) logger.info(`Google Sheets 同步完成，${changed} 個伺服器有更新`);
       }
     } catch (err) {
       logger.error(`Google Sheets 同步失敗:`, err.message);

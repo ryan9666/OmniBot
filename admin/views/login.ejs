@@ -37,7 +37,17 @@
     <% if (locals.error) { %>
       <div class="error"><%= error %></div>
     <% } %>
-    <a href="/auth/discord" class="btn-discord"> Discord 登入</a>
+    <form method="POST" action="/login">
+      <div style="margin-bottom:16px;">
+        <label style="display:block;font-size:13px;color:#888;margin-bottom:4px;">帳號</label>
+        <input type="text" name="username" required style="width:100%;padding:10px;background:#1a1a2e;border:1px solid #333;border-radius:8px;color:#fff;font-size:14px;">
+      </div>
+      <div style="margin-bottom:20px;">
+        <label style="display:block;font-size:13px;color:#888;margin-bottom:4px;">密碼</label>
+        <input type="password" name="password" required style="width:100%;padding:10px;background:#1a1a2e;border:1px solid #333;border-radius:8px;color:#fff;font-size:14px;">
+      </div>
+      <button type="submit" style="width:100%;padding:12px;background:#7c6ff0;color:#fff;border:none;border-radius:8px;font-size:16px;cursor:pointer;">登入</button>
+    </form>
   </div>
 </body>
 </html>

@@ -42,7 +42,8 @@ module.exports = {
 
     if (sub === 'reload') {
       try {
-        delete require.cache;
+        const commandFiles = Object.keys(require.cache).filter(k => k.includes(`commands${require('path').sep}`));
+        commandFiles.forEach(k => delete require.cache[k]);
         interaction.client.commands.clear();
         const { registerCommands } = require('../../utils/command-handler');
         registerCommands(interaction.client);

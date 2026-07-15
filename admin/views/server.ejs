@@ -190,7 +190,7 @@
     <div class="stats">
       <div class="stat"><div class="num"><%= guild.memberCount %></div><div class="label">成員</div></div>
       <div class="stat"><div class="num"><%= guild.channels.length %></div><div class="label">頻道</div></div>
-      <div class="stat"><div class="num"><%= guild.roleCount || 0 %></div><div class="label">身分組</div></div>
+      <div class="stat"><div class="num"><%= guild.roles ? guild.roles.length : 0 %></div><div class="label">身分組</div></div>
     </div>
   </div>
 
@@ -206,6 +206,7 @@
       <a href="#" onclick="switchTab('rolegive', event)">🎁 公開派發</a>
       <a href="#" onclick="switchTab('inviteguard', event)">🔗 連結管理</a>
       <a href="#" onclick="switchTab('appeal', event)">📋 申訴</a>
+      <a href="#" onclick="switchTab('githubwebhook', event)">🐙 GitHub</a>
       <a href="#" onclick="switchTab('antiraid', event)">🚨 防轟炸</a>
       <a href="#" onclick="switchTab('invitelog', event)">🔗 邀請追蹤</a>
       <a href="#" onclick="switchTab('messagelog', event)">📝 記錄日誌</a>
@@ -220,6 +221,7 @@
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
           <div>
             <form method="POST" action="/api/settings/<%= guild.id %>" id="welcomeForm">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>">
               <input type="hidden" name="type" value="welcome">
               <input type="hidden" name="_tab" value="welcome">
               <div class="form-group">
@@ -273,7 +275,8 @@
       <div class="card">
         <h2>👋 告別訊息</h2>
         <form method="POST" action="/api/settings/<%= guild.id %>">
-          <input type="hidden" name="type" value="farewell">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+              <input type="hidden" name="type" value="farewell">
           <input type="hidden" name="_tab" value="farewell">
           <div class="form-group">
             <label>發送頻道</label>
@@ -305,6 +308,7 @@
           勾選以下身分組，成員在 Discord 輸入 <code>/role</code> 即可自行領取/移除
         </p>
         <form method="POST" action="/api/settings/<%= guild.id %>/roles">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
           <div class="role-grid">
             <% guild.roles.forEach(r => { %>
               <label class="role-item">
@@ -404,7 +408,7 @@
         status.textContent = '發送中...'; status.className = 'status-msg';
         const res = await fetch('/api/announce/send', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
           body: JSON.stringify({ channelId, title, message: msg, color }),
         });
         const data = await res.json();
@@ -433,6 +437,7 @@
           包房創建人可使用 <code>/voice</code> 指令管理（重新命名、鎖定、踢人、轉移所有權）。
         </p>
         <form method="POST" action="/api/settings/<%= guild.id %>/autovoice">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
           <div class="form-group">
             <label>創建頻道</label>
             <select name="channelId">
@@ -477,6 +482,7 @@
           成員點擊「建立工單」按鈕後，Bot 會自動創建私人頻道，只有管理員和該成員看得到。
         </p>
         <form method="POST" action="/api/settings/<%= guild.id %>/ticket">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
           <div class="form-group">
             <label>工單分類（選填）</label>
             <select name="categoryId">
@@ -525,6 +531,7 @@
       <div class="card">
         <h2>🤖 自動審核</h2>
         <form method="POST" action="/api/settings/<%= guild.id %>/automod">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
           <input type="hidden" name="_tab" value="automod">
           <div class="form-group checkbox">
             <input type="hidden" name="enabled" value="0">
@@ -616,6 +623,7 @@
           使用 <code>/give @成員 @身分組</code> 派發身分組時，選擇一個頻道自動公告。
         </p>
         <form method="POST" action="/api/settings/<%= guild.id %>/rolegive">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
           <div class="form-group">
             <label>公告頻道（不選則只私訊不公告）</label>
             <select name="channelId">
@@ -637,6 +645,7 @@
           啟用後非白名單的 Discord 邀請連結會自動刪除。
         </p>
         <form method="POST" action="/api/settings/<%= guild.id %>/inviteguard">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
           <div class="form-group checkbox">
             <input type="hidden" name="enabled" value="0">
             <input type="checkbox" name="enabled" value="1" <%= guild.inviteGuard.enabled ? 'checked' : '' %>>
@@ -660,6 +669,28 @@
       </div>
     </div>
 
+    <div class="tab-pane" id="tab-githubwebhook">
+      <div class="card">
+        <h2>🐙 GitHub Webhook</h2>
+        <p style="font-size:13px;color:#888;margin-bottom:12px;">
+          當 GitHub 有 PR 建立/合併/審核或 Issue 建立時，自動發送通知到 DC。<br>
+          Webhook URL：<code>https://omnibot-yzti.onrender.com/api/github-webhook</code>
+        </p>
+        <form method="POST" action="/api/settings/<%= guild.id %>/githubwebhook">
+          <div class="form-group">
+            <label>通知頻道</label>
+            <select name="channelId">
+              <option value="">不啟用</option>
+              <% guild.channels.forEach(c => { %>
+                <option value="<%= c.id %>" <%= guild.githubWebhook.channelId === c.id ? 'selected' : '' %>>#<%= c.name %></option>
+              <% }); %>
+            </select>
+          </div>
+          <button type="submit" class="btn">儲存</button>
+        </form>
+      </div>
+    </div>
+
     <div class="tab-pane" id="tab-appeal">
       <div class="card">
         <h2>📋 封禁申訴</h2>
@@ -668,6 +699,7 @@
           選擇一個頻道接收申訴通知。
         </p>
         <form method="POST" action="/api/settings/<%= guild.id %>/appeal">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
           <div class="form-group">
             <label>申訴通知頻道</label>
             <select name="channelId">
@@ -689,6 +721,7 @@
           偵測短時間大量加入或大量訊息，自動處理可疑活動。
         </p>
         <form method="POST" action="/api/settings/<%= guild.id %>/antiraid">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
           <div class="form-group checkbox">
             <input type="hidden" name="enabled" value="0">
             <input type="checkbox" name="enabled" value="1" <%= guild.antiRaid.enabled ? 'checked' : '' %>>
@@ -755,6 +788,7 @@
           有新成員加入時，Bot 會自動發送加入來源、邀請碼、邀請者和統計資料。
         </p>
         <form method="POST" action="/api/settings/<%= guild.id %>/invitelog">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
           <div class="form-group">
             <label>追蹤頻道</label>
             <select name="channelId">
@@ -776,6 +810,7 @@
           設定一個頻道，Bot 會自動記錄成員的訊息編輯和刪除。
         </p>
         <form method="POST" action="/api/settings/<%= guild.id %>/messagelog">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
           <input type="hidden" name="_tab" value="messagelog">
           <div class="form-group">
             <label>紀錄頻道</label>
@@ -796,6 +831,7 @@
           （需要先設定 <code>GOOGLE_DB_URL</code> 環境變數）
         </p>
         <form method="POST" action="/api/settings/<%= guild.id %>/messagelog">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
           <input type="hidden" name="_tab" value="messagelog">
           <div class="form-group checkbox">
             <input type="hidden" name="messageLogAllEnabled" value="0">
@@ -809,6 +845,7 @@
   </div>
 
   <script>
+    const CSRF_TOKEN = '<%= csrfToken %>';
     async function sendTicketPanel(e) {
       e.preventDefault();
       const channelId = document.getElementById('ticketPanelChannel').value;
@@ -817,7 +854,7 @@
       status.textContent = '發送中...'; status.className = 'status-msg';
       const res = await fetch('/api/server/<%= guild.id %>/send-ticket-panel', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
         body: JSON.stringify({ channelId }),
       });
       const data = await res.json();
@@ -833,7 +870,7 @@
       status.textContent = '發送中...'; status.className = 'status-msg';
       const res = await fetch('/api/server/<%= guild.id %>/send-panel', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
         body: JSON.stringify({ channelId }),
       });
       const data = await res.json();

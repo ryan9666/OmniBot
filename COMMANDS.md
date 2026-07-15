@@ -34,6 +34,18 @@
 | `/automod strikereset 小時` | 重置時間 | Administrator |
 | `/automod resetuser @成員` | 重設某人累犯 | Administrator |
 | `/automod log 級別` | 公告級別 | Administrator |
+| `/automod logchannel #頻道` | 設定紀錄頻道 | Administrator |
+| `/automod phishing` | 啟用/停用釣魚連結偵測 | Administrator |
+| `/automod regex add/remove/list 正則` | 管理正則過濾 | Administrator |
+| `/tempban @成員 分鐘 原因` | 暫時封鎖（時間到自動解封） | BanMembers |
+| `/lockdown #頻道` | 鎖定頻道 | ManageChannels |
+| `/unlockdown #頻道` | 解鎖頻道 | ManageChannels |
+| `/slowmode 秒數 #頻道` | 設定慢速模式 | ManageChannels |
+| `/autorole set/remove/status @身分組` | 管理自動身分組 | Administrator |
+| `/warns list/remove/clear @成員` | 查看/管理警告紀錄 | 可惡管管們 |
+| `/massrole add/remove @身分組 ID列表` | 批次管理身分組 | ManageRoles |
+| `/verify setup/remove #頻道 @身分組` | 按鈕驗證系統 | Administrator |
+| `/modlog set/remove #頻道` | 管理操作日誌頻道 | Administrator |
 
 ## 🚨 防轟炸
 
@@ -87,7 +99,7 @@
 | `/customcmd delete 名稱` | 刪除 | 可愛管管們 |
 | `/customcmd list` | 列表 | 可愛管管們 |
 | `/tag 名稱` | 使用自訂指令 | 所有人 |
-| `@Bot 名稱` | 使用自訂指令 | 所有人 |
+| `@Bot 名稱` | 使用自訂指令 | 可愛管管們 |
 
 ## 🎁 抽獎
 

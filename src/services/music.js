@@ -1,11 +1,12 @@
-const { createAudioPlayer, createAudioResource, joinVoiceChannel, AudioPlayerStatus } = require('@discordjs/voice');
-const { EmbedBuilder } = require('discord.js');
+const logger = require('../utils/logger');
+const { createAudioPlayer, createAudioResource, joinVoiceChannel, AudioPlayerStatus, entersState } = require('@discordjs/voice');
+const { EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const play = require('play-dl');
 
 // Initialize SoundCloud
 play.getFreeClientID().then(id => {
   if (id) play.setToken({ soundcloud: { client_id: id } });
-}).catch(() => {});
+}).catch(err => logger.warn('music 操作失敗:', err.message));
 
 const queues = new Map();
 
@@ -30,7 +31,7 @@ const music = {
     const voice = interaction.member.voice.channel;
     if (!voice) return interaction.reply({ content: '❌ 你不在語音頻道中', ephemeral: true });
     const perms = voice.permissionsFor(interaction.client.user);
-    if (!perms.has('Connect') || !perms.has('Speak')) return interaction.reply({ content: '❌ 機器人沒有權限加入/發聲', ephemeral: true });
+    if (!perms.has(PermissionFlagsBits.Connect) || !perms.has(PermissionFlagsBits.Speak)) return interaction.reply({ content: '❌ 機器人沒有權限加入/發聲', ephemeral: true });
     await interaction.deferReply();
 
     let guildQueue = queues.get(interaction.guild.id);
@@ -74,9 +75,9 @@ async function playSong(queue) {
     const resource = createAudioResource(stream.stream, { inputType: stream.type, inlineVolume: true });
     resource.volume?.setVolumeLogarithmic(queue.volume / 100);
     queue.player.play(resource);
-    if (queue.textChannel) queue.textChannel.send({ embeds: [new EmbedBuilder().setColor(0xff7700).setTitle('▶️ 正在播放').setDescription(song.title).setFooter({ text: 'SoundCloud' })] }).catch(() => {});
+    if (queue.textChannel) queue.textChannel.send({ embeds: [new EmbedBuilder().setColor(0xff7700).setTitle('▶️ 正在播放').setDescription(song.title).setFooter({ text: 'SoundCloud' })] }).catch(err => logger.warn('music 操作失敗:', err.message));
   } catch (err) {
-    console.error('[音樂] 播放失敗:', err.message);
+    logger.error('音樂 播放失敗:', err.message);
     queue.songs.shift();
     if (queue.songs.length > 0) playSong(queue);
     else { queue.playing = false; queue.connection?.destroy(); queues.delete(queue.guildId); }
@@ -87,11 +88,34 @@ async function playSong(queue) {
   queue.player.on(AudioPlayerStatus.Idle, () => {
     if (queue.loop) queue.songs.push(queue.songs.shift()); else queue.songs.shift();
     if (queue.songs.length > 0) playSong(queue);
-    else { queue.playing = false; setTimeout(() => { queue.connection?.destroy(); queues.delete(queue.guildId); }, 60000); if (queue.textChannel) queue.textChannel.send('🎵 佇列已播放完畢').catch(() => {}); }
+    else { queue.playing = false; setTimeout(() => { queue.connection?.destroy(); queues.delete(queue.guildId); }, 60000); if (queue.textChannel) queue.textChannel.send('🎵 佇列已播放完畢').catch(err => logger.warn('music 操作失敗:', err.message)); }
   });
 
   queue.player.removeAllListeners('error');
-  queue.player.on('error', (err) => { console.error('[音樂] 錯誤:', err.message); if (queue.textChannel) queue.textChannel.send('❌ 播放錯誤').catch(() => {}); });
+  queue.player.on('error', (err) => { logger.error('音樂 錯誤:', err.message); if (queue.textChannel) queue.textChannel.send('❌ 播放錯誤').catch(err => logger.warn('music 操作失敗:', err.message)); });
 }
+
+music.getQueue = (guildId) => queues.get(guildId);
+music.queues = queues;
+
+music.playFromWeb = async (guildId, channelId, query, userId) => {
+  const guild = global.client?.guilds.cache.get(guildId);
+  if (!guild) throw new Error('找不到伺服器');
+  const voiceChannel = guild.channels.cache.get(channelId);
+  if (!voiceChannel) throw new Error('找不到語音頻道');
+
+  let guildQueue = queues.get(guildId);
+  if (!guildQueue) {
+    guildQueue = new MusicQueue(guildId, voiceChannel, null);
+    queues.set(guildId, guildQueue);
+  }
+
+  const song = await searchSC(query);
+  if (!song) throw new Error('找不到結果');
+
+  guildQueue.songs.push(song);
+  if (!guildQueue.playing) playSong(guildQueue);
+  return song;
+};
 
 module.exports = music;

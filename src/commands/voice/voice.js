@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
 const settings = require('../../services/settings');
 const logger = require('../../utils/logger');
 
@@ -41,7 +41,7 @@ module.exports = {
         return interaction.reply({ content: '❌ 只有管理員才能使用此指令', ephemeral: true });
       }
       const channel = interaction.options.getChannel('頻道');
-      if (channel.type !== 2) {
+      if (channel.type !== ChannelType.GuildVoice) {
         return interaction.reply({ content: '請選擇一個語音頻道', ephemeral: true });
       }
       const gs = settings.getGuildSettings(interaction.guild.id);
@@ -51,7 +51,7 @@ module.exports = {
     }
 
     const ownerId = interaction.client.voiceOwners?.get(interaction.member.voice.channelId);
-    if (interaction.member.voice.channelId !== ownerId) {
+    if (interaction.member.id !== ownerId) {
       return interaction.reply({ content: '❌ 你不在自己的包房中', ephemeral: true });
     }
 

@@ -1,56 +1,231 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OmniBot - 多功能 Discord 機器人</title>
-  <style>
-    * { margin:0;padding:0;box-sizing:border-box; }
-    body { font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif; background:#0a0a14; color:#e0e0e0; min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; }
-    body::before { content:''; position:fixed; top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(ellipse at 30%20%,rgba(124,111,240,0.08)0%,transparent 50%);pointer-events:none; }
-    .card { position:relative;z-index:1;text-align:center;padding:48px; }
-    .logo { font-size:48px;margin-bottom:8px; }
-    h1 { font-size:36px;font-weight:800;color:#fff;margin-bottom:4px;letter-spacing:-0.5px; }
-    h1 span { color:#7c6ff0; }
-    .sub { color:#8888aa;font-size:15px;margin-bottom:24px; }
-    .stats { display:flex;gap:24px;justify-content:center;margin-bottom:32px; }
-    .stat { text-align:center; }
-    .stat .num { font-size:28px;font-weight:700;color:#fff; }
-    .stat .label { font-size:12px;color:#6666aa; }
-    .buttons { display:flex;gap:12px;justify-content:center;flex-wrap:wrap; }
-    .btn { padding:14px 32px;border-radius:10px;font-size:15px;font-weight:600;text-decoration:none;transition:all 0.15s; }
-    .btn-primary { background:linear-gradient(135deg,#7c6ff0,#6a5de0);color:#fff; }
-    .btn-primary:hover { transform:translateY(-2px);box-shadow:0 8px 24px rgba(124,111,240,0.3); }
-    .btn-discord { background:#5865F2;color:#fff; }
-    .btn-discord:hover { background:#4752C4;transform:translateY(-2px); }
-    .btn-outline { border:1px solid rgba(255,255,255,0.1);color:#ccc; }
-    .btn-outline:hover { border-color:#7c6ff0;color:#fff; }
-    .features { display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;max-width:700px;margin:32px auto 0;text-align:left; }
-    .feature { background:rgba(22,22,42,0.4);border:1px solid rgba(255,255,255,0.04);border-radius:8px;padding:10px 14px;font-size:13px; }
-    .feature .icon { margin-right:6px; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniBot - 多功能 Discord 機器人</title>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { 
+            font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif; 
+            background:#0a0a14; 
+            color:#e0e0e0; 
+            min-height:100vh; 
+            display:flex; 
+            flex-direction:column; 
+            align-items:center; 
+            justify-content:center; 
+            overflow-x: hidden;
+        }
+        body::before { 
+            content:''; 
+            position:fixed; 
+            top:-50%;left:-50%; 
+            width:200%;height:200%; 
+            background:radial-gradient(ellipse at 30%20%,rgba(124,111,240,0.08)0%,transparent 50%); 
+            pointer-events:none; 
+            z-index: -1;
+        }
+        .card { 
+            position:relative; 
+            z-index:1; 
+            text-align:center; 
+            padding:48px; 
+            max-width: 900px;
+        }
+        .logo { 
+            font-size:52px; 
+            margin-bottom:8px; 
+            transition: transform 0.4s ease;
+        }
+        .logo:hover { transform: rotate(15deg) scale(1.1); }
+        h1 { 
+            font-size:36px; 
+            font-weight:800; 
+            color:#fff; 
+            margin-bottom:4px; 
+            letter-spacing:-0.5px; 
+        }
+        h1 span { color:#7c6ff0; }
+        .sub { 
+            color:#8888aa; 
+            font-size:15px; 
+            margin-bottom:24px; 
+        }
+        .stats { 
+            display:flex; 
+            gap:32px; 
+            justify-content:center; 
+            margin-bottom:40px; 
+            flex-wrap: wrap;
+        }
+        .stat { 
+            text-align:center; 
+            cursor: pointer;
+        }
+        .stat .num { 
+            font-size:32px; 
+            font-weight:700; 
+            color:#fff; 
+            transition: all 0.3s;
+        }
+        .stat:hover .num { color:#7c6ff0; transform: scale(1.15); }
+        .stat .label { 
+            font-size:12px; 
+            color:#6666aa; 
+        }
+        .buttons { 
+            display:flex; 
+            gap:14px; 
+            justify-content:center; 
+            flex-wrap:wrap; 
+            margin-bottom: 40px;
+        }
+        .btn { 
+            padding:14px 32px; 
+            border-radius:10px; 
+            font-size:15px; 
+            font-weight:600; 
+            text-decoration:none; 
+            transition:all 0.3s; 
+            position: relative;
+            overflow: hidden;
+        }
+        .btn::after {
+            content: ''; position: absolute; top:50%; left:50%; width:0; height:0;
+            background: rgba(255,255,255,0.3); border-radius:50%; transform: translate(-50%,-50%);
+            transition: width 0.6s, height 0.6s;
+        }
+        .btn:active::after { width:300px; height:300px; }
+        .btn-primary { 
+            background:linear-gradient(135deg,#7c6ff0,#6a5de0); 
+            color:#fff; 
+        }
+        .btn-primary:hover { 
+            transform:translateY(-3px); 
+            box-shadow:0 12px 30px rgba(124,111,240,0.4); 
+        }
+        .btn-discord { background:#5865F2; color:#fff; }
+        .btn-discord:hover { background:#4752C4; transform:translateY(-3px); }
+        .btn-outline { border:1px solid rgba(255,255,255,0.15); color:#ccc; }
+        .btn-outline:hover { border-color:#7c6ff0; color:#fff; transform:translateY(-2px); }
+
+        .features { 
+            display:grid; 
+            grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); 
+            gap:12px; 
+            max-width:720px; 
+            margin:40px auto 0; 
+            text-align:left; 
+        }
+        .feature { 
+            background:rgba(22,22,42,0.6); 
+            border:1px solid rgba(124,111,240,0.1); 
+            border-radius:12px; 
+            padding:14px 16px; 
+            font-size:13.5px; 
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .feature:hover { 
+            transform: translateY(-6px) scale(1.03); 
+            border-color:#7c6ff0; 
+            box-shadow:0 10px 25px rgba(124,111,240,0.2);
+        }
+        .feature .icon { margin-right:8px; font-size:16px; }
+    </style>
 </head>
 <body>
-  <div class="card">
-    <div class="logo">🤖</div>
-    <h1>Omni<span>Bot</span></h1>
-    <div class="sub">多功能 Discord 機器人 · 管理 · 娛樂 · 經濟 · 工單 · RPG</div>
-    <div class="stats">
-      <div class="stat"><div class="num"><%= guildCount %></div><div class="label">伺服器</div></div>
-      <div class="stat"><div class="num"><%= userCount.toLocaleString() %></div><div class="label">成員</div></div>
-      <div class="stat"><div class="num"><%= ping %>ms</div><div class="label">延遲</div></div>
+    <div class="card">
+        <div class="logo">🤖</div>
+        <h1>OmniBot</h1>
+        <h1><span>多功能 Discord 機器人</span></h1>
+        <p class="sub">管理．娛樂．經濟．工單．RPG — 讓你的伺服器更強大</p>
+
+        <div class="stats">
+            <div class="stat" data-target="<%= guildCount %>"><div class="num">0</div><div class="label">伺服器</div></div>
+            <div class="stat" data-target="<%= userCount %>"><div class="num">0</div><div class="label">成員</div></div>
+            <div class="stat"><div class="num"><%= ping %>ms</div><div class="label">平均延遲</div></div>
+        </div>
+
+        <div class="buttons">
+            <a href="https://discord.com/oauth2/authorize?client_id=<%= require('../src/config').discord.clientId %>&permissions=8&scope=bot%20applications.commands" class="btn btn-primary" target="_blank">立即邀請 OmniBot</a>
+            <a href="/login" class="btn btn-discord">🔐 管理員登入</a>
+            <a href="/appeal" class="btn btn-outline">📋 封禁申訴</a>
+        </div>
+
+        <div class="features">
+            <div class="feature"><span class="icon">🛡️</span> 管理指令</div>
+            <div class="feature"><span class="icon">🤖</span> 自動審核</div>
+            <div class="feature"><span class="icon">🚨</span> 防轟炸保護</div>
+            <div class="feature"><span class="icon">🎫</span> 工單系統</div>
+            <div class="feature"><span class="icon">🔊</span> 語音包房</div>
+            <div class="feature"><span class="icon">🎭</span> 身分組管理</div>
+            <div class="feature"><span class="icon">📈</span> 虛擬股市</div>
+            <div class="feature"><span class="icon">⚔️</span> RPG 冒險</div>
+            <div class="feature"><span class="icon">🧩</span> 成語接龍</div>
+            <div class="feature"><span class="icon">🎮</span> 娛樂小遊戲</div>
+            <div class="feature"><span class="icon">📝</span> 訊息紀錄</div>
+            <div class="feature"><span class="icon">🔮</span> AI 海龜湯</div>
+        </div>
     </div>
-    <div class="buttons">
-      <a class="btn btn-discord" href="https://discord.com/oauth2/authorize?client_id=1524767770871595191&permissions=8&scope=bot%20applications.commands" target="_blank">📥 邀請機器人</a>
-      <a class="btn btn-primary" href="/login">🔐 管理員登入</a>
-      <a class="btn btn-outline" href="/appeal">📋 封禁申訴</a>
-    </div>
-    <div class="features">
-      <div class="feature">🛡️ 管理指令</div><div class="feature">🤖 自動審核</div><div class="feature">🚨 防轟炸</div>
-      <div class="feature">🎫 工單系統</div><div class="feature">🔊 語音包房</div><div class="feature">🎭 身分組</div>
-      <div class="feature">📈 虛擬股市</div><div class="feature">⚔️ RPG 冒險</div><div class="feature">🧩 成語接龍</div>
-      <div class="feature">🎮 娛樂小遊戲</div><div class="feature">📝 訊息紀錄</div><div class="feature">🔗 連結管理</div>
-      <div class="feature">🔮 AI 海龜湯</div><div class="feature">🎂 生日祝賀</div><div class="feature">📊 數據分析</div>
-    </div>
-  </div>
+
+    <script>
+        // 統計數字滾動動畫
+        function animateValue(obj, start, end, duration) {
+            let startTimestamp = null;
+            const step = (timestamp) => {
+                if (!startTimestamp) startTimestamp = timestamp;
+                const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+                const value = Math.floor(progress * (end - start) + start);
+                obj.textContent = value.toLocaleString('zh-TW');
+                if (progress < 1) {
+                    window.requestAnimationFrame(step);
+                } else {
+                    obj.textContent = end.toLocaleString('zh-TW');
+                }
+            };
+            window.requestAnimationFrame(step);
+        }
+
+        // 啟動統計動畫
+        window.onload = () => {
+            document.querySelectorAll('.stat[data-target]').forEach(stat => {
+                const numEl = stat.querySelector('.num');
+                const target = parseInt(stat.getAttribute('data-target'));
+                animateValue(numEl, 0, target, 1800);
+            });
+        };
+
+        // 簡單粒子背景
+        function createParticle() {
+            const particle = document.createElement('div');
+            particle.style.position = 'fixed';
+            particle.style.width = '3px';
+            particle.style.height = '3px';
+            particle.style.background = 'rgba(124,111,240,0.6)';
+            particle.style.borderRadius = '50%';
+            particle.style.left = Math.random() * 100 + 'vw';
+            particle.style.top = '-10px';
+            particle.style.opacity = Math.random() * 0.6 + 0.3;
+            particle.style.zIndex = '-2';
+            document.body.appendChild(particle);
+
+            let y = -10;
+            const speed = Math.random() * 1.5 + 0.8;
+            const interval = setInterval(() => {
+                y += speed;
+                particle.style.top = y + 'px';
+                if (y > window.innerHeight) {
+                    clearInterval(interval);
+                    particle.remove();
+                }
+            }, 16);
+        }
+
+        setInterval(() => {
+            if (Math.random() > 0.4) createParticle();
+        }, 120);
+    </script>
 </body>
 </html>
