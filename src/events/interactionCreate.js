@@ -21,6 +21,9 @@ module.exports = {
     if (interaction.isButton() && interaction.customId === 'ticket_close') {
       return handleTicketClose(interaction);
     }
+    if (interaction.isButton() && interaction.customId.startsWith('music_')) {
+      return handleMusicButton(interaction);
+    }
     if (interaction.isAutocomplete()) {
       return handleAutocomplete(interaction);
     }
@@ -229,5 +232,63 @@ async function handleVerifyClick(interaction) {
   } catch (err) {
     logger.error(`驗證失敗 (${interaction.user.id}):`, err);
     await interaction.reply({ content: '❌ 驗證失敗，請聯繫管理員', ephemeral: true });
+  }
+}
+
+async function handleMusicButton(interaction) {
+  const music = require('../services/music');
+  const queue = music.queues.get(interaction.guild.id);
+
+  if (!queue || !queue.playing) {
+    return interaction.reply({ content: '❌ 當前沒有播放中的音樂佇列', ephemeral: true });
+  }
+
+  const voiceChannel = interaction.member.voice.channel;
+  if (!voiceChannel || voiceChannel.id !== queue.voiceChannel.id) {
+    return interaction.reply({ content: '❌ 你必須與機器人在同一個語音頻道中才能控制播放', ephemeral: true });
+  }
+
+  const customId = interaction.customId;
+
+  try {
+    if (customId === 'music_toggle') {
+      if (queue.player.state.status === 'paused') {
+        queue.player.unpause();
+      } else {
+        queue.player.pause();
+      }
+    } else if (customId === 'music_skip') {
+      queue.player.stop();
+      await interaction.reply({ content: '⏭️ 已跳過當前歌曲', ephemeral: true });
+      return;
+    } else if (customId === 'music_prev') {
+      if (queue.history.length === 0) {
+        return interaction.reply({ content: '❌ 沒有上一首歌曲的歷史記錄', ephemeral: true });
+      }
+      const prevSong = queue.history.pop();
+      queue.songs.unshift(prevSong);
+      queue.isGoingBack = true;
+      queue.player.stop();
+      await interaction.reply({ content: '⏮️ 正在播放上一首歌曲', ephemeral: true });
+      return;
+    } else if (customId === 'music_loop') {
+      queue.loop = !queue.loop;
+    } else if (customId === 'music_queue') {
+      const { EmbedBuilder } = require('discord.js');
+      const list = queue.songs.map((s, idx) => `${idx === 0 ? '▶️ 正在播放' : `${idx}.`} ${s.title}`).slice(0, 10).join('\n') || '無';
+      const embed = new EmbedBuilder()
+        .setColor(0x3498db)
+        .setTitle('🎶 播放佇列')
+        .setDescription(list);
+      return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+
+    const card = music.createPlayerCard(queue);
+    if (card) {
+      await interaction.update(card).catch(() => {});
+    }
+  } catch (err) {
+    logger.error('音樂按鈕控制失敗:', err.message);
+    await interaction.reply({ content: '❌ 控制失敗：' + err.message, ephemeral: true }).catch(() => {});
   }
 }
