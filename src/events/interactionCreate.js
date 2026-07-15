@@ -221,25 +221,26 @@ async function handleMusicButton(interaction) {
       queue.player.stop();
       await interaction.reply({ content: '⏭️ 已跳過當前歌曲', ephemeral: true });
       return;
-    } else if (customId === 'music_stop') {
-      queue.songs = [];
-      queue.player.stop();
-      queue.connection?.destroy();
-      if (queue.interval) clearInterval(queue.interval);
-      if (queue.controllerMessage) {
-        await queue.controllerMessage.delete().catch(() => {});
+    } else if (customId === 'music_prev') {
+      if (queue.history.length === 0) {
+        return interaction.reply({ content: '❌ 沒有上一首歌曲的歷史記錄', ephemeral: true });
       }
-      music.queues.delete(interaction.guild.id);
-      await interaction.reply({ content: '⏹️ 已停止播放並關閉語音', ephemeral: true });
+      const prevSong = queue.history.pop();
+      queue.songs.unshift(prevSong);
+      queue.isGoingBack = true;
+      queue.player.stop();
+      await interaction.reply({ content: '⏮️ 正在播放上一首歌曲', ephemeral: true });
       return;
     } else if (customId === 'music_loop') {
       queue.loop = !queue.loop;
-    } else if (customId === 'music_vol_up') {
-      queue.volume = Math.min(100, queue.volume + 10);
-      queue.player.state.resource?.volume?.setVolumeLogarithmic(queue.volume / 100);
-    } else if (customId === 'music_vol_down') {
-      queue.volume = Math.max(0, queue.volume - 10);
-      queue.player.state.resource?.volume?.setVolumeLogarithmic(queue.volume / 100);
+    } else if (customId === 'music_queue') {
+      const { EmbedBuilder } = require('discord.js');
+      const list = queue.songs.map((s, idx) => `${idx === 0 ? '▶️ 正在播放' : `${idx}.`} ${s.title}`).slice(0, 10).join('\n') || '無';
+      const embed = new EmbedBuilder()
+        .setColor(0x3498db)
+        .setTitle('🎶 播放佇列')
+        .setDescription(list);
+      return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
     const card = music.createPlayerCard(queue);

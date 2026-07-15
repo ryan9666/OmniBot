@@ -1,6 +1,7 @@
 const express = require('express');
 const path = require('path');
 const session = require('express-session');
+const http = require('http');
 const config = require('../src/config');
 const logger = require('../src/utils/logger');
 
@@ -68,6 +69,47 @@ app.get('/dashboard', requireAuth, (req, res) => {
     online: false, guilds: [], totalUsers: 0, commands: [],
     ping: 0, uptimeFormatted: '0m', nodeVersion: process.version,
   });
+});
+
+const MUSIC_API = `http://localhost:${process.env.MUSIC_API_PORT || 3001}`;
+
+app.get('/music', requireAuth, (req, res) => {
+  res.render('music');
+});
+
+app.get('/api/guilds', requireAuth, (req, res) => {
+  http.get(`${MUSIC_API}/api/guilds`, (proxy) => {
+    let data = '';
+    proxy.on('data', chunk => data += chunk);
+    proxy.on('end', () => res.json(JSON.parse(data)));
+  }).on('error', () => res.json([]));
+});
+
+app.get('/api/music/:guildId', requireAuth, (req, res) => {
+  http.get(`${MUSIC_API}/api/music/${req.params.guildId}`, (proxy) => {
+    let data = '';
+    proxy.on('data', chunk => data += chunk);
+    proxy.on('end', () => res.json(JSON.parse(data)));
+  }).on('error', () => res.json({ playing: false, songs: [] }));
+});
+
+app.post('/api/music/:guildId/control', requireAuth, express.json(), (req, res) => {
+  const body = JSON.stringify(req.body);
+  const opts = {
+    hostname: 'localhost',
+    port: process.env.MUSIC_API_PORT || 3001,
+    path: `/api/music/${req.params.guildId}/control`,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+  };
+  const proxy = http.request(opts, (proxyRes) => {
+    let data = '';
+    proxyRes.on('data', chunk => data += chunk);
+    proxyRes.on('end', () => res.status(proxyRes.statusCode).json(JSON.parse(data)));
+  });
+  proxy.on('error', () => res.status(502).json({ error: 'Bot API offline' }));
+  proxy.write(body);
+  proxy.end();
 });
 
 app.listen(PORT, () => {

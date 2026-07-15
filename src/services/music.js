@@ -4,12 +4,10 @@ const play = require('play-dl');
 const fs = require('fs');
 const path = require('path');
 
-// Initialize SoundCloud
 play.getFreeClientID().then(id => {
   if (id) play.setToken({ soundcloud: { client_id: id } });
 }).catch(() => {});
 
-// Detect cookies.txt in workspace root
 try {
   const cookiePath = path.join(process.cwd(), 'cookies.txt');
   if (fs.existsSync(cookiePath)) {
@@ -29,20 +27,22 @@ class MusicQueue {
     this.voiceChannel = channel;
     this.textChannel = textChannel;
     this.songs = [];
+    this.history = [];
     this.playing = false;
     this.loop = false;
-    this.volume = 50;
+    this.volume = 100;
     this.connection = null;
     this.player = createAudioPlayer();
     this.controllerMessage = null;
     this.interval = null;
+    this.isGoingBack = false;
   }
 }
 
 function formatTime(sec) {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 function createPlayerCard(queue) {
@@ -55,62 +55,66 @@ function createPlayerCard(queue) {
   
   let progressStr = '';
   if (totalSec === 0) {
-    progressStr = '🔴 直播中 / 未知長度';
+    progressStr = '0:00 ────────────────🔴────────────────── 0:00';
   } else {
-    const barLength = 12;
+    const barLength = 24;
     const pct = Math.min(1, currentSec / totalSec);
     const active = Math.floor(pct * barLength);
-    const bar = '▬'.repeat(active) + '🔘' + '▬'.repeat(Math.max(0, barLength - active - 1));
-    progressStr = `${bar} \`[${formatTime(currentSec)} / ${formatTime(totalSec)}]\``;
+    const bar = '─'.repeat(active) + '🔵' + '─'.repeat(Math.max(0, barLength - active - 1));
+    progressStr = `${formatTime(currentSec)} ─${bar}─ ${formatTime(totalSec)}`;
   }
 
+  const nextSongTitle = queue.songs[1] ? queue.songs[1].title : '無';
+
   const embed = new EmbedBuilder()
-    .setColor(song.source === 'youtube' ? 0xff0000 : 0xff7700)
-    .setTitle(`▶️ 正在播放：${song.title}`)
-    .setURL(song.url)
+    .setColor(0x3498db)
+    .setTitle('🎵 正在播放')
+    .setDescription(song.title)
     .addFields(
-      { name: '來源', value: song.source === 'youtube' ? '🎥 YouTube' : '🎵 SoundCloud', inline: true },
-      { name: '音量', value: `🔊 ${queue.volume}%`, inline: true },
-      { name: '循環模式', value: queue.loop ? '🔁 啟用' : '❌ 停用', inline: true },
-      { name: '進度條', value: progressStr }
-    )
-    .setFooter({ text: `佇列內還有 ${queue.songs.length - 1} 首歌曲` });
+      { name: '作者', value: song.author || '未知', inline: true },
+      { name: '時長', value: totalSec === 0 ? '直播' : formatTime(totalSec), inline: true },
+      { name: '進度', value: progressStr, inline: false },
+      { name: '循環', value: queue.loop ? '開啟' : '關閉', inline: true },
+      { name: '音量', value: `${queue.volume}%`, inline: true },
+      { name: '下一首', value: nextSongTitle, inline: false }
+    );
 
   if (song.thumbnail) {
     embed.setThumbnail(song.thumbnail);
   }
 
-  const row1 = new ActionRowBuilder().addComponents(
+  if (song.requester) {
+    embed.setFooter({
+      text: `由 ${song.requester.tag} 點播`,
+      iconURL: song.requester.avatar
+    });
+  }
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('music_prev')
+      .setLabel('上一首')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(queue.history.length === 0),
     new ButtonBuilder()
       .setCustomId('music_toggle')
-      .setLabel(queue.player.state.status === 'paused' ? '▶️ 繼續' : '⏸️ 暫停')
-      .setStyle(queue.player.state.status === 'paused' ? ButtonStyle.Success : ButtonStyle.Primary),
+      .setLabel('暫停/恢復')
+      .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId('music_skip')
-      .setLabel('⏭️ 跳過')
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId('music_stop')
-      .setLabel('⏹️ 停止')
-      .setStyle(ButtonStyle.Danger)
-  );
-
-  const row2 = new ActionRowBuilder().addComponents(
+      .setLabel('下一首')
+      .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
       .setCustomId('music_loop')
-      .setLabel(queue.loop ? '🔁 循環中' : '🔁 單曲循環')
-      .setStyle(queue.loop ? ButtonStyle.Success : ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId('music_vol_down')
-      .setLabel('🔉 音量 -')
+      .setLabel(`循環：${queue.loop ? '開啟' : '關閉'}`)
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
-      .setCustomId('music_vol_up')
-      .setLabel('🔊 音量 +')
+      .setCustomId('music_queue')
+      .setLabel('查看列表')
       .setStyle(ButtonStyle.Secondary)
   );
 
-  return { embeds: [embed], components: [row1, row2] };
+  return { embeds: [embed], components: [row] };
 }
 
 async function updateController(guildId) {
@@ -124,7 +128,6 @@ async function updateController(guildId) {
 }
 
 async function searchTrack(query) {
-  // 1. YouTube 連結解析與播放
   const isYtUrl = play.yt_validate(query) !== false;
   if (isYtUrl) {
     try {
@@ -135,7 +138,8 @@ async function searchTrack(query) {
           url: info.video_details.url,
           duration: info.video_details.durationInSec,
           source: 'youtube',
-          thumbnail: info.video_details.thumbnails?.[0]?.url || null
+          thumbnail: info.video_details.thumbnails?.[0]?.url || null,
+          author: info.video_details.channel?.name || '未知作者'
         };
       }
     } catch (err) {
@@ -143,7 +147,6 @@ async function searchTrack(query) {
     }
   }
 
-  // 2. YouTube 搜尋
   try {
     const ytResults = await play.search(query, { source: { youtube: 'video' }, limit: 1 }).catch(() => []);
     if (ytResults && ytResults.length > 0) {
@@ -152,14 +155,14 @@ async function searchTrack(query) {
         url: ytResults[0].url,
         duration: ytResults[0].durationInSec,
         source: 'youtube',
-        thumbnail: ytResults[0].thumbnails?.[0]?.url || null
+        thumbnail: ytResults[0].thumbnails?.[0]?.url || null,
+        author: ytResults[0].channel?.name || '未知作者'
       };
     }
   } catch (err) {
     console.warn(`[音樂] YouTube 搜尋失敗，自動降級至 SoundCloud:`, err.message);
   }
 
-  // 3. SoundCloud 搜尋備用
   try {
     const scResults = await play.search(query, { source: { soundcloud: 'tracks' }, limit: 1 }).catch(() => []);
     if (scResults && scResults.length > 0) {
@@ -168,7 +171,8 @@ async function searchTrack(query) {
         url: scResults[0].url,
         duration: Math.floor((scResults[0].duration || 0) / 1000),
         source: 'soundcloud',
-        thumbnail: scResults[0].thumbnail || null
+        thumbnail: scResults[0].thumbnail || null,
+        author: scResults[0].publisher?.artist || scResults[0].user?.username || '未知作者'
       };
     }
   } catch (err) {
@@ -199,7 +203,12 @@ const music = {
     if (guildQueue.voiceChannel.id !== voice.id) return interaction.editReply({ content: '❌ 機器人已在其他語音頻道' });
 
     const song = await searchTrack(query);
-    if (!song) return interaction.editReply('❌ 找不到任何音樂結果 (YouTube 與 SoundCloud 搜尋均未回應)');
+    if (!song) return interaction.editReply('❌ 找不到任何音樂結果');
+
+    song.requester = {
+      tag: interaction.member.displayName,
+      avatar: interaction.user.displayAvatarURL()
+    };
 
     guildQueue.songs.push(song);
     if (!guildQueue.playing) {
@@ -209,7 +218,7 @@ const music = {
     }
 
     const embed = new EmbedBuilder()
-      .setColor(song.source === 'youtube' ? 0xff0000 : 0xff7700)
+      .setColor(0x3498db)
       .setTitle('🎵 已加入佇列')
       .setDescription(song.title)
       .setFooter({ text: `位置 #${guildQueue.songs.length} • 來源: ${song.source}` });
@@ -248,7 +257,7 @@ const music = {
   async queue(i) { 
     const gq = queues.get(i.guild.id); 
     if (!gq || gq.songs.length === 0) return i.reply({ content: '❌ 佇列為空', ephemeral: true }); 
-    return i.reply({ embeds: [new EmbedBuilder().setColor(0xff7700).setTitle('🎶 播放佇列').setDescription(gq.songs.map((s, idx) => `${idx === 0 ? '▶️' : `${idx}.`} ${s.title}`).slice(0, 10).join('\n'))], ephemeral: true }); 
+    return i.reply({ embeds: [new EmbedBuilder().setColor(0x3498db).setTitle('🎶 播放佇列').setDescription(gq.songs.map((s, idx) => `${idx === 0 ? '▶️' : `${idx}.`} ${s.title}`).slice(0, 10).join('\n'))], ephemeral: true }); 
   },
   
   async pause(i) { 
@@ -281,7 +290,7 @@ const music = {
     if (!gq) return i.reply({ content: '❌ 沒有播放中的音樂', ephemeral: true }); 
     gq.loop = !gq.loop; 
     updateController(i.guild.id);
-    return i.reply({ content: `🔁 循環播放已${gq.loop ? '啟用' : '停用'}`, ephemeral: true }); 
+    return i.reply({ content: `🔁 循環播放已${gq.loop ? '開啟' : '關閉'}`, ephemeral: true }); 
   },
 };
 
@@ -304,7 +313,6 @@ async function playSong(queue) {
     resource.volume?.setVolumeLogarithmic(queue.volume / 100);
     queue.player.play(resource);
 
-    // 刪除舊的控制台消息，保持最新
     if (queue.controllerMessage) {
       await queue.controllerMessage.delete().catch(() => {});
       queue.controllerMessage = null;
@@ -312,12 +320,10 @@ async function playSong(queue) {
 
     if (queue.interval) clearInterval(queue.interval);
 
-    // 發送全新互動控制面板
     const card = createPlayerCard(queue);
     if (queue.textChannel && card) {
       queue.controllerMessage = await queue.textChannel.send(card).catch(() => null);
 
-      // 每 10 秒動態編輯一次 Embed，刷新進度條
       queue.interval = setInterval(async () => {
         if (!queue.playing || !queue.controllerMessage || queue.songs[0] !== song) {
           clearInterval(queue.interval);
@@ -346,7 +352,16 @@ async function playSong(queue) {
   queue.player.removeAllListeners(AudioPlayerStatus.Idle);
   queue.player.on(AudioPlayerStatus.Idle, () => {
     if (queue.interval) clearInterval(queue.interval);
-    if (queue.loop) queue.songs.push(queue.songs.shift()); else queue.songs.shift();
+    
+    if (queue.isGoingBack) {
+      queue.isGoingBack = false;
+    } else {
+      if (queue.songs[0]) {
+        queue.history.push(queue.songs[0]);
+        if (queue.history.length > 15) queue.history.shift();
+      }
+      if (queue.loop) queue.songs.push(queue.songs.shift()); else queue.songs.shift();
+    }
     
     if (queue.songs.length > 0) playSong(queue);
     else { 
